@@ -1,0 +1,238 @@
+% RiskFrontier_Theory.tex
+\documentclass[11pt,a4paper]{article}
+
+% --------- Pacotes básicos ----------
+\usepackage[brazil]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath, amssymb, amsfonts, bm, mathtools}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+
+\geometry{margin=2.6cm}
+
+% Permite que \includegraphics tente png/jpg/pdf nessa ordem
+\DeclareGraphicsExtensions{.png,.jpg,.jpeg,.pdf}
+
+% --------- Cores institucionais ----------
+\definecolor{safraBlue}{HTML}{002855}
+\definecolor{safraGold}{HTML}{C6A664}
+
+% --------- Links discretos ----------
+\hypersetup{
+  colorlinks=true,
+  linkcolor=safraBlue,
+  urlcolor=safraBlue,
+  citecolor=safraBlue
+}
+
+% --------- Macro do logo com fallback (PNG > JPG > nada) ----------
+% --------- Macro do logo com fallback (PDF > PNG > JPG) ----------
+\newcommand{\BankLogo}{%
+  \IfFileExists{logoEnf.pdf}{\includegraphics[height=1.2cm]{logoEnf.pdf}}{%
+    \IfFileExists{logoEnf_fixed.png}{\includegraphics[height=1.2cm]{logoEnf_fixed.png}}{%
+      \IfFileExists{logoEnf.png}{\includegraphics[height=1.2cm]{logoEnf.png}}{%
+        \IfFileExists{logoEnf.jpg}{\includegraphics[height=1.2cm]{logoEnf.jpg}}{}%
+      }%
+    }%
+  }%
+}
+
+% --------- Cabeçalho com logo ----------
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\BankLogo}
+\rhead{\textcolor{safraBlue}{\textbf{Risk \& Return Analyzer}}}
+\cfoot{\thepage}
+
+% --------- Título ----------
+\title{\textbf{Credit Portfolio Risk \& Return Analyzer}\\[2mm]
+\large \textcolor{safraBlue}{Financial Engineering for Bankers}}
+\author{\textbf{Walter C Neto}}
+\date{\today}
+
+% --------- Comandos úteis ----------
+\newcommand{\PD}{\mathrm{PD}}
+\newcommand{\LGD}{\mathrm{LGD}}
+\newcommand{\EAD}{\mathrm{EAD}}
+\newcommand{\EL}{\mathrm{EL}}
+\newcommand{\UL}{\mathrm{UL}}
+\newcommand{\Kcap}{\mathrm{K}}
+\newcommand{\Rho}{\rho}
+\newcommand{\VaR}{\mathrm{VaR}}
+\newcommand{\ES}{\mathrm{ES}}
+\newcommand{\bp}{\mathrm{bp}}
+\newcommand{\Phiinv}{\Phi^{-1}}
+
+\begin{document}
+\maketitle
+\vspace{-1.0em}
+\hrule
+\vspace{1.2em}
+
+\section{Visão geral}
+Este documento descreve a fundamentação teórica e as fórmulas utilizadas no aplicativo \emph{Credit Portfolio Risk \& Return Analyzer}. O objetivo é analisar uma carteira de crédito sob a ótica de risco e retorno, estimando:
+\begin{itemize}[leftmargin=1.2em]
+  \item o \textbf{required spread} (cobertura de \(\EL\), custo de capital via \(\Kcap\), funding e opex),
+  \item o \textbf{mispricing} percentual por exposição,
+  \item a \textbf{risk contribution} em pontos--base,
+  \item e os efeitos de \textbf{rebalanceamentos} (vender piores / aumentar melhores).
+\end{itemize}
+
+As entradas principais por exposição são: \(\EAD\), \(\PD\) (\%), \(\LGD\) (\%), spread observado em \(\bp\), opcionalmente prazo (\emph{maturity}) em anos e correlação \(\Rho\).
+
+\section{Normalização dos dados}
+O aplicativo normaliza nomes de colunas (sinônimos) e converte números no formato local (ex.: ``10,5\%'' \(\rightarrow\) \(0{,}105\)). As grandezas percentuais são transformadas para fração:
+\begin{equation}
+\PD_f = \frac{\PD}{100}, \qquad \LGD_f = \frac{\LGD}{100}.
+\end{equation}
+
+\section{Modelo ASRF (Vasicek de um fator)}
+O cálculo de capital segue o paradigma \textbf{ASRF} (\emph{Asymptotic Single Risk Factor}). Para cada exposição \(i\), o valor latente de ativo \(A_i\) é:
+\begin{equation}
+A_i = \sqrt{\Rho}\,Y + \sqrt{1-\Rho}\,\varepsilon_i,
+\end{equation}
+onde \(Y \sim \mathcal{N}(0,1)\) é o fator sistêmico e \(\varepsilon_i \sim \mathcal{N}(0,1)\) é o idiossincrático. O default ocorre quando \(A_i \leq \Phi^{-1}(\PD_f)\), com \(\Phi\) a CDF normal padrão.
+
+\subsection{Probabilidade condicional de default}
+Condicionado em \(Y=y\), a probabilidade de default é:
+\begin{equation}
+\PD_{\text{cond}}(y) \;=\; \Phi\!\left(\frac{\Phi^{-1}(\PD_f) - \sqrt{\Rho}\,y}{\sqrt{1-\Rho}}\right).
+\end{equation}
+
+\subsection{Capital regulatório em nível de confiança}
+Para um nível de confiança \(\alpha\) (tipicamente \(99{,}9\%\)), toma-se \(y_\alpha = \Phi^{-1}(1-\alpha)\) (quantil adverso do fator). Assim, a perda condicional é aproximada por:
+\begin{equation}
+\mathrm{Loss}_\alpha \;\approx\; \LGD_f \cdot \PD_{\text{cond}}(y_\alpha).
+\end{equation}
+O \textbf{capital condicional} (por unidade de exposição) é então:
+\begin{equation}
+\Kcap \;=\; \max\!\Big(\LGD_f \cdot \Phi\!\Big(\frac{\Phi^{-1}(\PD_f) + \sqrt{\Rho}\,\Phi^{-1}(\alpha)}{\sqrt{1-\Rho}}\Big) - \PD_f \cdot \LGD_f,\ 0\Big).
+\label{eq:K}
+\end{equation}
+No app adota-se \(\alpha = 0{,}999\), logo \(\Phi^{-1}(\alpha)\approx 3{,}090\).
+
+\subsection{Ajuste de maturidade (exposições corporativas)}
+Quando há \emph{maturity} \(M\) (anos), aplica-se o multiplicador:
+\begin{align}
+b(\PD_f) &= \big(0{,}11852 - 0{,}05478\cdot \ln(\PD_f)\big)^2,\\
+\mathrm{MA}(M,\PD_f) &= \frac{1 + (M-2{,}5)\,b(\PD_f)}{1 - 1{,}5\, b(\PD_f)}.
+\end{align}
+O capital ajustado torna-se \(\Kcap^\star = \Kcap \cdot \mathrm{MA}\).
+
+\paragraph{Observação sobre \(\Rho\).} No app, \(\Rho\) pode vir do arquivo de entrada (coluna \texttt{rho}) ou ser fixado por parâmetro (\emph{slider}). Diferentemente de certas fórmulas regulatórias onde \(\Rho\) é função de \(\PD\), aqui usa-se o valor informado/selecionado.
+
+\section{Perda Esperada, Capital e \emph{Required Spread}}
+A \textbf{perda esperada} por unidade de exposição é:
+\begin{equation}
+\EL = \PD_f \cdot \LGD_f.
+\end{equation}
+O app calcula o \textbf{required spread} (em \(\bp\)) como:
+\begin{equation}
+\mathrm{RequiredBP} \;=\; 10{,}000 \cdot \Big(\EL + \text{Hurdle}\cdot \Kcap^\star\Big) + \mathrm{FundingBP} + \mathrm{OpexBP}.
+\label{eq:reqbp}
+\end{equation}
+Isto cobre a perda esperada, um prêmio pelo custo de capital (via \(\Kcap^\star\)), e \emph{overheads} de funding/opex, todos convertidos para pontos--base.
+
+\section{Mispricing, Risk Contribution e Métricas de Portfólio}
+\subsection{Mispricing (\%)}
+Comparando o spread observado \(\mathrm{SpreadBP}\) com o requerido:
+\begin{equation}
+\mathrm{Mispricing\%} \;=\; \frac{\mathrm{SpreadBP} - \mathrm{RequiredBP}}{\max(\mathrm{RequiredBP},\,10^{-9})}.
+\end{equation}
+Valores positivos sugerem sobrepreço (\emph{over-earning}); negativos, subpreço (\emph{under-earning}).
+
+\subsection{Risk contribution em bp}
+Para análise bidimensional, considera-se a \textbf{risk contribution} em bp por exposição como:
+\begin{equation}
+\mathrm{RC}_{\bp}^{(i)} = 10{,}000 \cdot \Kcap_i^\star.
+\end{equation}
+No agregado, a métrica síntese usada no app é a média ponderada por \(\EAD\):
+\begin{equation}
+\overline{\mathrm{RC}}_{\bp} \;=\; \sum_i w_i \cdot (10{,}000\,\Kcap_i^\star), \qquad
+w_i = \frac{\EAD_i}{\sum_j \EAD_j}.
+\end{equation}
+
+\subsection{Tabela de desempenho do portfólio}
+Para o portfólio (original, após vender piores \(N\), e após aumentar melhores \(N\)):
+\begin{align}
+\textbf{Exposure Amount (MM)} &: \ \frac{\sum_i \EAD_i}{10^6},\\
+\textbf{Total Spread (bp)} &: \ \sum_i w_i \cdot \mathrm{SpreadBP}_i,\\
+\textbf{Expected Spread (bp)} &: \ \sum_i w_i \cdot \mathrm{RequiredBP}_i,\\
+\textbf{Unexpected Loss (MM)} &: \ \frac{\sum_i \EAD_i \cdot \Kcap_i^\star}{10^6}.
+\end{align}
+Define-se ainda um índice tipo \emph{Sharpe}:
+\begin{equation}
+\mathrm{SharpeLike} \;=\; \frac{\sum_i w_i \cdot \mathrm{RequiredBP}_i}{\sum_i w_i \cdot (10{,}000\,\Kcap_i^\star)}.
+\end{equation}
+Ele compara ``retorno requerido'' por unidade de risco (capital) em bp. No app, é apresentado em \%.
+
+\section{Rebalanceamentos}
+\subsection{Vender piores \(N\)}
+Ordena-se por \(\mathrm{Mispricing\%}\) ascendente e remove-se as \(N\) piores exposições (subprecificadas). Recalcula-se a tabela de portfólio.
+
+\subsection{Aumentar melhores \(N\)}
+Ordena-se por \(\mathrm{Mispricing\%}\) descendente e multiplica-se a \(\EAD\) das \(N\) melhores por um fator \(F>1\). Recomputam-se as métricas.%
+\footnote{No app, o fator \(F\) é controlado por \emph{slider}.}
+
+\section{Modo rápido (heurístico)}
+Como aproximação expedita, o app oferece um modo \emph{heurístico} para o capital:
+\begin{equation}
+\Kcap_{\text{heur}} \;\approx\; \LGD_f \cdot \sqrt{\PD_f (1-\PD_f)} \cdot \sqrt{1+\Rho}.
+\end{equation}
+Essa forma não é regulatória, mas serve como \emph{proxy} de risco para análise exploratória quando não se deseja o cálculo ASRF completo.
+
+\section{Unidades e cuidados práticos}
+\begin{itemize}[leftmargin=1.2em]
+  \item \(\PD\) e \(\LGD\) são fornecidas em \%, mas o cálculo utiliza as frações \(\PD_f\) e \(\LGD_f\).
+  \item \(\mathrm{SpreadBP},\ \mathrm{FundingBP},\ \mathrm{OpexBP}\) estão em \(\bp\) (pontos--base).
+  \item \(\Kcap^\star\) é adimensional (perda relativa por unidade de exposição).
+  \item Em \eqref{eq:reqbp}, o fator \(10{,}000\) converte uma taxa em \% para \(\bp\).
+  \item Para estabilidade numérica, o app satura \(\PD_f,\LGD_f,\Rho\) dentro de intervalos \([10^{-6},0.999999]\).
+\end{itemize}
+
+\section{Glossário de símbolos}
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Símbolo & Descrição \\
+\midrule
+\(\EAD\) & \emph{Exposure at Default} (exposição) \\
+\(\PD\) (\%) & Probabilidade de default (entrada em \%) \\
+\(\LGD\) (\%) & Perda dado default (entrada em \%) \\
+\(\PD_f,\LGD_f\) & Frações (0--1) usadas no cálculo \\
+\(\Rho\) & Correlação ativo--fator sistêmico \\
+\(\Kcap\) & Capital por unidade de exposição (ASRF) \\
+\(\EL\) & Perda esperada \\
+\(\mathrm{RequiredBP}\) & Spread requerido em pontos--base \\
+\(\mathrm{SpreadBP}\) & Spread observado em pontos--base \\
+\(\mathrm{Mispricing\%}\) & Sinaliza sobre/subprecificação \\
+\(\mathrm{RC}_{\bp}\) & Risk contribution em bp \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Limitações e extensões}
+\begin{itemize}[leftmargin=1.2em]
+  \item ASRF assume portfólio infinitamente granular e um único fator sistêmico.
+  \item A escolha de \(\Rho\) afeta fortemente \(\Kcap\); no app, \(\Rho\) pode ser inserida ou ajustada via parâmetro.
+  \item \emph{Funding} e \emph{Opex} são insumos de negócio, não estimados pelo modelo.
+  \item Extensões naturais: \(\VaR\)/\(\ES\) por simulação, \(\Rho\) setorial, correções de concentração, dependência de maturidade e garantias.
+\end{itemize}
+
+\vspace{1em}
+\noindent\textbf{Observação prática (app).} O gráfico principal utiliza no eixo \(x\) a \(\mathrm{RC}_{\bp}\) por exposição e no eixo \(y\) o spread (observado ou requerido). Uma reta de inclinação mediana (\emph{Sharpe Line}) ajuda a comparar razão retorno/risco relativa.
+
+\vfill
+\begin{center}
+\textit{Este documento acompanha o aplicativo para fins de entendimento e validação das fórmulas e hipóteses.}
+\end{center}
+
+\end{document}
